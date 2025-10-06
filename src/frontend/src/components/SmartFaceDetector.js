@@ -368,7 +368,6 @@ function SmartFaceDetector() {
     
     // Get the actual display size of the video element
     const videoRect = video.getBoundingClientRect();
-    const containerRect = canvas.parentElement.getBoundingClientRect();
     
     // Set canvas size to match the video display size
     canvas.width = videoRect.width;

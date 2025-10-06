@@ -1,13 +1,11 @@
 import React, { useState, useCallback } from 'react';
 import styled from 'styled-components';
+import SmartFaceDetector from './components/SmartFaceDetector';
 import VideoUploader from './components/VideoUploader';
 import VideoPreview from './components/VideoPreview';
 import PredictionResults from './components/PredictionResults';
-import CameraRecorder from './components/CameraRecorder';
-import LivePrediction from './components/LivePrediction';
-import SmartFaceDetector from './components/SmartFaceDetector';
 import Header from './components/Header';
-import { predictVideo, saveVideo } from './services/api';
+import { predictVideo } from './services/api';
 
 const AppContainer = styled.div`
   min-height: 100vh;
@@ -103,14 +101,6 @@ function App() {
     setError(null);
   }, []);
 
-  const handleVideoRecorded = useCallback(async (file, className) => {
-    try {
-      const result = await saveVideo(file, className);
-      alert(`✅ Video saved successfully to ${className} class!\n\nFilename: ${result.filename}\nYou can now use it for training.`);
-    } catch (error) {
-      alert(`❌ Failed to save video: ${error.message}`);
-    }
-  }, []);
 
   return (
     <AppContainer>
@@ -125,22 +115,10 @@ function App() {
               🚀 SmartFace Detection
             </Tab>
             <Tab 
-              $active={activeTab === 'predict'} 
-              onClick={() => setActiveTab('predict')}
+              $active={activeTab === 'upload'} 
+              onClick={() => setActiveTab('upload')}
             >
-              🔍 Predict Video
-            </Tab>
-            <Tab 
-              $active={activeTab === 'live'} 
-              onClick={() => setActiveTab('live')}
-            >
-              🎯 Live Recognition
-            </Tab>
-            <Tab 
-              $active={activeTab === 'record'} 
-              onClick={() => setActiveTab('record')}
-            >
-              📹 Record for Dataset
+              📁 Upload Video
             </Tab>
           </TabContainer>
 
@@ -151,10 +129,10 @@ function App() {
             </Section>
           )}
 
-          {activeTab === 'predict' && (
+          {activeTab === 'upload' && (
             <>
               <Section>
-                <SectionTitle>Upload Video for Prediction</SectionTitle>
+                <SectionTitle>📁 Upload Video for Face Detection</SectionTitle>
                 <VideoUploader 
                   onFileSelect={handleFileSelect}
                   selectedFile={selectedFile}
@@ -175,7 +153,7 @@ function App() {
 
               {(prediction || error) && (
                 <Section>
-                  <SectionTitle>Prediction Results</SectionTitle>
+                  <SectionTitle>Detection Results</SectionTitle>
                   <PredictionResults 
                     prediction={prediction}
                     error={error}
@@ -183,29 +161,6 @@ function App() {
                 </Section>
               )}
             </>
-          )}
-
-          {activeTab === 'live' && (
-            <Section>
-              <SectionTitle>Live Face Recognition</SectionTitle>
-              <LivePrediction 
-                onPrediction={(predictions) => {
-                  // Only log if there are predictions to avoid spam
-                  if (predictions && predictions.length > 0) {
-                    console.log('Live predictions:', predictions);
-                  }
-                }}
-              />
-            </Section>
-          )}
-
-          {activeTab === 'record' && (
-            <Section>
-              <SectionTitle>Record Video for Training Dataset</SectionTitle>
-              <CameraRecorder 
-                onVideoRecorded={handleVideoRecorded}
-              />
-            </Section>
           )}
         </ContentArea>
       </MainContent>

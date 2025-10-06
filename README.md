@@ -19,9 +19,11 @@ A real-time face detection and tracking web application that detects all faces i
 
 ## 🎯 Project Overview
 
-This project provides both:
-1. **SmartFace MVP**: Real-time face detection and tracking system
-2. **Human Classifier**: Deep learning model for identity/activity classification
+**SmartFace** is a real-time face detection and tracking system that:
+- Detects faces in video frames using OpenCV/MediaPipe
+- Draws green bounding boxes around detected faces
+- Assigns consistent "Person 1, 2, 3..." labels that follow people as they move
+- Works with uploaded videos or live webcam feed
 
 ## 🏗️ Architecture
 
@@ -76,21 +78,13 @@ npm install
 npm start
 ```
 
-### Option 3: Human Classifier Training
+### Option 3: Standalone Demo (No Web Interface)
 ```bash
-# Run the setup script
-python3 setup.py
+# Run the command-line face detection demo
+python3 smartface_demo.py --method opencv
 
-# Create sample dataset structure
-python3 create_sample_data.py
-
-# Add your video data to dataset/PersonA/, dataset/PersonB/, etc.
-
-# Train the model
-python3 src/model/train.py
-
-# Run the complete demo
-python3 run_demo.py
+# Record detection session
+python3 smartface_demo.py --output detection_session.mp4
 ```
 
 ### Option 2: Manual Setup
@@ -154,10 +148,9 @@ python3 run_demo.py
 - `POST /detect_faces_video`: Detect faces in uploaded video
 - `GET /face_detector_status`: Get face detector status
 
-### Human Classifier
-- `POST /predict`: Upload video and get classification
+### General API
 - `GET /health`: Health check
-- `GET /classes`: List available classes
+- `GET /`: API status and information
 
 ## 🎨 Frontend Features
 
@@ -167,11 +160,10 @@ python3 run_demo.py
 - Consistent person labeling across frames
 - Live statistics and detection counts
 
-### Human Classifier
-- Video upload interface
-- Real-time prediction display
-- Confidence scores
-- Video preview
+### Video Upload
+- Upload video files for face detection
+- Preview uploaded videos
+- Detection results display
 
 ## ⚙️ Tech Stack
 

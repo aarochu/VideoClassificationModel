@@ -35,11 +35,11 @@ const Description = styled.p`
 function Header() {
   return (
     <HeaderContainer>
-      <Title>🎯 Human Classifier</Title>
-      <Subtitle>AI-Powered Video Classification</Subtitle>
+      <Title>🚀 SmartFace</Title>
+      <Subtitle>Real-time Face Detection & Tracking</Subtitle>
       <Description>
-        Upload a short video clip and our AI model will classify who the person is 
-        or what kind of activity they're performing.
+        Detect faces in real-time with consistent labeling. Upload videos or use your webcam 
+        to see green bounding boxes around detected faces with persistent "Person 1, 2, 3..." labels.
       </Description>
     </HeaderContainer>
   );
