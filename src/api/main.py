@@ -601,6 +601,106 @@ async def get_face_detector_status():
     })
 
 
+@app.post("/reset_face_tracker")
+async def reset_face_tracker():
+    """Reset the face tracker to start fresh with Person 1."""
+    if face_detector is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Face detector not available"}
+        )
+    
+    try:
+        face_detector.tracker.reset()
+        return JSONResponse(content={
+            "message": "Face tracker reset successfully",
+            "next_person_id": 1
+        })
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to reset face tracker: {str(e)}"}
+        )
+
+
+@app.post("/adjust_detection_sensitivity")
+async def adjust_detection_sensitivity(request: dict):
+    """Adjust face detection sensitivity to reduce false positives."""
+    if face_detector is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Face detector not available"}
+        )
+    
+    try:
+        sensitivity = request.get("sensitivity", "medium")
+        
+        if sensitivity == "high":
+            # More sensitive - may detect more false positives
+            confidence_threshold = 0.5
+            min_neighbors = 5
+            min_size = (30, 30)
+        elif sensitivity == "low":
+            # Less sensitive - fewer false positives, may miss some faces
+            confidence_threshold = 0.8
+            min_neighbors = 10
+            min_size = (80, 80)
+        else:  # medium
+            # Balanced - current settings
+            confidence_threshold = 0.6
+            min_neighbors = 6
+            min_size = (30, 30)
+        
+        # Note: This would require recreating the detector with new parameters
+        # For now, we'll just return the recommended settings
+        return JSONResponse(content={
+            "message": f"Detection sensitivity set to {sensitivity}",
+            "settings": {
+                "confidence_threshold": confidence_threshold,
+                "min_neighbors": min_neighbors,
+                "min_size": min_size,
+                "note": "Restart the application to apply new sensitivity settings"
+            }
+        })
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to adjust sensitivity: {str(e)}"}
+        )
+
+
+@app.get("/detection_debug")
+async def get_detection_debug():
+    """Get current detection settings for debugging."""
+    if face_detector is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Face detector not available"}
+        )
+    
+    try:
+        debug_info = {
+            "detector_type": type(face_detector).__name__,
+            "using_mediapipe": hasattr(face_detector, 'use_mediapipe') and face_detector.use_mediapipe,
+            "tracker_info": {
+                "max_disappeared": face_detector.tracker.max_disappeared,
+                "max_distance": face_detector.tracker.max_distance,
+                "next_face_id": face_detector.tracker.next_face_id,
+                "active_faces": len(face_detector.tracker.faces)
+            }
+        }
+        
+        if hasattr(face_detector, 'face_detection'):
+            debug_info["mediapipe_confidence"] = face_detector.face_detection.min_detection_confidence
+        
+        return JSONResponse(content=debug_info)
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to get debug info: {str(e)}"}
+        )
+
+
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",

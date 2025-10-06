@@ -28,7 +28,7 @@ class FaceTracker:
     Uses IoU (Intersection over Union) to match faces between frames.
     """
     
-    def __init__(self, max_disappeared: int = 10, max_distance: float = 0.5):
+    def __init__(self, max_disappeared: int = 30, max_distance: float = 0.3):
         """
         Initialize face tracker.
         
@@ -40,6 +40,8 @@ class FaceTracker:
         self.faces = {}  # face_id -> face_data
         self.max_disappeared = max_disappeared
         self.max_distance = max_distance
+        self.frames_without_faces = 0
+        self.reset_threshold = 60  # Reset IDs after 60 frames without any faces
         
     def calculate_iou(self, box1: Tuple[int, int, int, int], box2: Tuple[int, int, int, int]) -> float:
         """Calculate Intersection over Union between two bounding boxes."""
@@ -91,7 +93,21 @@ class FaceTracker:
                 self.faces[face_id]['disappeared'] += 1
                 if self.faces[face_id]['disappeared'] > self.max_disappeared:
                     del self.faces[face_id]
+            
+            # Increment counter for frames without faces
+            self.frames_without_faces += 1
+            
+            # Reset face IDs if no faces detected for too long
+            if self.frames_without_faces > self.reset_threshold:
+                self.faces = {}
+                self.next_face_id = 1
+                self.frames_without_faces = 0
+                print("🔄 Face tracker reset - starting fresh with Person 1")
+            
             return []
+        
+        # Reset counter when faces are detected
+        self.frames_without_faces = 0
         
         # If no existing faces, create new ones
         if len(self.faces) == 0:
@@ -184,6 +200,13 @@ class FaceTracker:
                 })
         
         return result
+    
+    def reset(self):
+        """Reset the face tracker to start fresh with Person 1."""
+        self.faces = {}
+        self.next_face_id = 1
+        self.frames_without_faces = 0
+        print("🔄 Face tracker manually reset - starting fresh with Person 1")
 
 
 class FaceDetector:
@@ -192,13 +215,13 @@ class FaceDetector:
     Falls back to OpenCV if MediaPipe is not available.
     """
     
-    def __init__(self, model_selection: int = 0, min_detection_confidence: float = 0.5):
+    def __init__(self, model_selection: int = 0, min_detection_confidence: float = 0.6):
         """
         Initialize face detector.
         
         Args:
             model_selection: 0 for short-range (2m), 1 for full-range (5m)
-            min_detection_confidence: Minimum confidence threshold
+            min_detection_confidence: Minimum confidence threshold (increased to reduce false positives)
         """
         if MEDIAPIPE_AVAILABLE:
             self.mp_face_detection = mp.solutions.face_detection
@@ -216,6 +239,45 @@ class FaceDetector:
             self.use_mediapipe = False
         
         self.tracker = FaceTracker()
+    
+    def _is_valid_face_detection(self, x: int, y: int, width: int, height: int, frame_width: int, frame_height: int) -> bool:
+        """
+        Validate if a detection is likely to be a real face.
+        
+        Args:
+            x, y, width, height: Bounding box coordinates
+            frame_width, frame_height: Frame dimensions
+            
+        Returns:
+            True if detection appears to be a valid face
+        """
+        # Check minimum size (faces shouldn't be too small)
+        if width < 20 or height < 20:
+            return False
+        
+        # Check maximum size (faces shouldn't be too large relative to frame)
+        if width > frame_width * 0.9 or height > frame_height * 0.9:
+            return False
+        
+        # Check aspect ratio (faces are roughly square to slightly rectangular)
+        aspect_ratio = width / height
+        if aspect_ratio < 0.5 or aspect_ratio > 2.0:  # More permissive range
+            return False
+        
+        # Check if detection is too close to frame edges (only for very close)
+        margin = min(width, height) * 0.05  # Smaller margin
+        if (x < margin or y < margin or 
+            x + width > frame_width - margin or 
+            y + height > frame_height - margin):
+            return False
+        
+        # Check area (faces shouldn't be too small relative to frame)
+        detection_area = width * height
+        frame_area = frame_width * frame_height
+        if detection_area < frame_area * 0.0005:  # More permissive (0.05% of frame)
+            return False
+        
+        return True
         
     def detect_faces(self, frame: np.ndarray) -> List[Dict]:
         """
@@ -253,20 +315,26 @@ class FaceDetector:
                     width = min(width, w - x)
                     height = min(height, h - y)
                     
-                    detections.append((x, y, width, height))
+                    # Filter out invalid detections
+                    if self._is_valid_face_detection(x, y, width, height, w, h):
+                        detections.append((x, y, width, height))
         else:
-            # Use OpenCV for detection
+            # Use OpenCV for detection with improved parameters
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             faces = self.face_cascade.detectMultiScale(
                 gray,
-                scaleFactor=1.1,
-                minNeighbors=5,
-                minSize=(30, 30),
+                scaleFactor=1.1,   # Standard scaling
+                minNeighbors=6,    # Balanced neighbors
+                minSize=(30, 30),  # Smaller minimum size
+                maxSize=(400, 400), # Larger maximum size
                 flags=cv2.CASCADE_SCALE_IMAGE
             )
             
-            for (x, y, w, h) in faces:
-                detections.append((x, y, w, h))
+            h, w = frame.shape[:2]
+            for (x, y, width, height) in faces:
+                # Filter out invalid detections
+                if self._is_valid_face_detection(x, y, width, height, w, h):
+                    detections.append((x, y, width, height))
         
         # Update tracker and return results
         tracked_faces = self.tracker.update(detections)
@@ -348,6 +416,45 @@ class OpenCVFaceDetector:
             cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         )
         self.tracker = FaceTracker()
+    
+    def _is_valid_face_detection(self, x: int, y: int, width: int, height: int, frame_width: int, frame_height: int) -> bool:
+        """
+        Validate if a detection is likely to be a real face.
+        
+        Args:
+            x, y, width, height: Bounding box coordinates
+            frame_width, frame_height: Frame dimensions
+            
+        Returns:
+            True if detection appears to be a valid face
+        """
+        # Check minimum size (faces shouldn't be too small)
+        if width < 20 or height < 20:
+            return False
+        
+        # Check maximum size (faces shouldn't be too large relative to frame)
+        if width > frame_width * 0.9 or height > frame_height * 0.9:
+            return False
+        
+        # Check aspect ratio (faces are roughly square to slightly rectangular)
+        aspect_ratio = width / height
+        if aspect_ratio < 0.5 or aspect_ratio > 2.0:  # More permissive range
+            return False
+        
+        # Check if detection is too close to frame edges (only for very close)
+        margin = min(width, height) * 0.05  # Smaller margin
+        if (x < margin or y < margin or 
+            x + width > frame_width - margin or 
+            y + height > frame_height - margin):
+            return False
+        
+        # Check area (faces shouldn't be too small relative to frame)
+        detection_area = width * height
+        frame_area = frame_width * frame_height
+        if detection_area < frame_area * 0.0005:  # More permissive (0.05% of frame)
+            return False
+        
+        return True
         
     def detect_faces(self, frame: np.ndarray) -> List[Dict]:
         """
@@ -362,15 +469,19 @@ class OpenCVFaceDetector:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(
             gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(30, 30),
+            scaleFactor=1.1,   # Standard scaling
+            minNeighbors=6,    # Balanced neighbors
+            minSize=(30, 30),  # Smaller minimum size
+            maxSize=(400, 400), # Larger maximum size
             flags=cv2.CASCADE_SCALE_IMAGE
         )
         
         detections = []
-        for (x, y, w, h) in faces:
-            detections.append((x, y, w, h))
+        h, w = frame.shape[:2]
+        for (x, y, width, height) in faces:
+            # Filter out invalid detections
+            if self._is_valid_face_detection(x, y, width, height, w, h):
+                detections.append((x, y, width, height))
         
         # Update tracker and return results
         tracked_faces = self.tracker.update(detections)
