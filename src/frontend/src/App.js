@@ -9,57 +9,94 @@ import { predictVideo } from './services/api';
 
 const AppContainer = styled.div`
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 20px;
+  background: #0A0F14;
+  color: #EAEAEA;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow-x: hidden;
 `;
 
 const MainContent = styled.div`
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
-  background: white;
-  border-radius: 20px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
 `;
 
 const ContentArea = styled.div`
-  padding: 40px;
+  width: 100%;
+  max-width: 1200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 `;
 
 const Section = styled.div`
+  width: 100%;
   margin-bottom: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 `;
 
 const SectionTitle = styled.h2`
-  color: #333;
-  margin-bottom: 20px;
-  font-size: 24px;
-  font-weight: 600;
+  color: #EAEAEA;
+  margin-bottom: 30px;
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: 1px;
+  text-align: center;
 `;
 
 const TabContainer = styled.div`
   display: flex;
-  margin-bottom: 30px;
-  background: #f8f9fa;
-  border-radius: 12px;
-  padding: 5px;
+  margin-bottom: 40px;
+  background: rgba(0, 255, 136, 0.1);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  border-radius: 16px;
+  padding: 8px;
+  backdrop-filter: blur(10px);
 `;
 
 const Tab = styled.button`
   flex: 1;
-  padding: 15px 20px;
+  padding: 16px 24px;
   border: none;
-  background: ${props => props.$active ? 'white' : 'transparent'};
-  color: ${props => props.$active ? '#667eea' : '#6c757d'};
-  border-radius: 8px;
+  background: ${props => props.$active ? 'rgba(0, 255, 136, 0.2)' : 'transparent'};
+  color: ${props => props.$active ? '#00FF88' : '#EAEAEA'};
+  border-radius: 12px;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: ${props => props.$active ? '0 2px 10px rgba(0,0,0,0.1)' : 'none'};
+  position: relative;
+  overflow: hidden;
 
   &:hover {
-    color: #667eea;
+    background: rgba(0, 255, 136, 0.15);
+    color: #00FF88;
+    transform: translateY(-1px);
+  }
+
+  ${props => props.$active && `
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(45deg, transparent, rgba(0, 255, 136, 0.1), transparent);
+      animation: shimmer 2s infinite;
+    }
+  `}
+
+  @keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
   }
 `;
 

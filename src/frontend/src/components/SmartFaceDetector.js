@@ -3,26 +3,42 @@ import styled from 'styled-components';
 import { detectFacesInImage, getFaceDetectorStatus } from '../services/api';
 
 const SmartFaceContainer = styled.div`
-  background: #f8f9fa;
-  border-radius: 12px;
-  padding: 30px;
+  background: transparent;
+  border-radius: 20px;
+  padding: 40px;
   text-align: center;
+  width: 100%;
+  max-width: 1000px;
 `;
 
 const VideoContainer = styled.div`
   position: relative;
   max-width: 800px;
-  margin: 0 auto 20px;
-  border-radius: 12px;
+  margin: 0 auto 30px;
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  box-shadow: 
+    0 0 40px rgba(0, 255, 136, 0.2),
+    0 0 80px rgba(0, 200, 255, 0.1),
+    inset 0 0 20px rgba(0, 255, 136, 0.1);
   background: #000;
+  border: 2px solid rgba(0, 255, 136, 0.3);
+  transition: all 0.3s ease;
+  
+  &:hover {
+    box-shadow: 
+      0 0 60px rgba(0, 255, 136, 0.3),
+      0 0 120px rgba(0, 200, 255, 0.15),
+      inset 0 0 30px rgba(0, 255, 136, 0.15);
+    border-color: rgba(0, 255, 136, 0.5);
+  }
 `;
 
 const Video = styled.video`
   width: 100%;
   height: auto;
   display: block;
+  border-radius: 18px;
 `;
 
 const Canvas = styled.canvas`
@@ -32,64 +48,103 @@ const Canvas = styled.canvas`
   width: 100%;
   height: 100%;
   pointer-events: none;
+  border-radius: 18px;
 `;
 
 const Controls = styled.div`
   display: flex;
-  gap: 15px;
+  gap: 20px;
   justify-content: center;
   flex-wrap: wrap;
-  margin-bottom: 20px;
+  margin-bottom: 30px;
 `;
 
 const Button = styled.button`
-  padding: 12px 24px;
-  border: none;
-  border-radius: 8px;
+  padding: 16px 32px;
+  border: 2px solid rgba(0, 255, 136, 0.3);
+  border-radius: 12px;
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
-  min-width: 120px;
+  min-width: 140px;
+  background: rgba(0, 255, 136, 0.1);
+  color: #00FF88;
+  backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
 
   &:disabled {
-    opacity: 0.6;
+    opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  &:hover:not(:disabled) {
+    background: rgba(0, 255, 136, 0.2);
+    border-color: rgba(0, 255, 136, 0.6);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 255, 136, 0.3);
   }
 `;
 
 const StartButton = styled(Button)`
-  background: ${props => props.$isActive ? '#dc3545' : '#28a745'};
-  color: white;
-
+  background: ${props => props.$isActive 
+    ? 'rgba(220, 53, 69, 0.2)' 
+    : 'rgba(0, 255, 136, 0.2)'};
+  border-color: ${props => props.$isActive 
+    ? 'rgba(220, 53, 69, 0.6)' 
+    : 'rgba(0, 255, 136, 0.6)'};
+  color: ${props => props.$isActive ? '#FF6B6B' : '#00FF88'};
+  
+  ${props => props.$isActive && `
+    box-shadow: 0 0 30px rgba(220, 53, 69, 0.4);
+    animation: pulse-red 2s infinite;
+  `}
+  
   &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+    background: ${props => props.$isActive 
+      ? 'rgba(220, 53, 69, 0.3)' 
+      : 'rgba(0, 255, 136, 0.3)'};
+    box-shadow: ${props => props.$isActive 
+      ? '0 8px 25px rgba(220, 53, 69, 0.4)' 
+      : '0 8px 25px rgba(0, 255, 136, 0.4)'};
+  }
+  
+  @keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 30px rgba(220, 53, 69, 0.4); }
+    50% { box-shadow: 0 0 50px rgba(220, 53, 69, 0.6); }
   }
 `;
 
 const Status = styled.div`
-  font-size: 16px;
-  font-weight: 500;
-  color: ${props => props.$isActive ? '#dc3545' : '#28a745'};
-  margin-bottom: 15px;
+  font-size: 18px;
+  font-weight: 400;
+  color: ${props => props.$isActive ? '#FF6B6B' : '#00FF88'};
+  margin-bottom: 20px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  text-shadow: 0 0 10px ${props => props.$isActive ? 'rgba(255, 107, 107, 0.5)' : 'rgba(0, 255, 136, 0.5)'};
 `;
 
 const FaceDisplay = styled.div`
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  margin-top: 20px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  background: rgba(0, 255, 136, 0.05);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  border-radius: 16px;
+  padding: 30px;
+  margin-top: 30px;
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
+  backdrop-filter: blur(10px);
   text-align: left;
+  width: 100%;
+  max-width: 600px;
 `;
 
 const FaceItem = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid #e9ecef;
+  padding: 15px 0;
+  border-bottom: 1px solid rgba(0, 255, 136, 0.1);
 
   &:last-child {
     border-bottom: none;
@@ -97,32 +152,36 @@ const FaceItem = styled.div`
 `;
 
 const PersonName = styled.span`
-  font-weight: 600;
-  color: #333;
+  font-weight: 500;
+  color: #EAEAEA;
   font-size: 18px;
+  letter-spacing: 0.5px;
 `;
 
 const Confidence = styled.span`
-  color: #667eea;
+  color: #00FF88;
   font-weight: 600;
+  font-size: 16px;
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
 `;
 
 const ErrorMessage = styled.div`
-  background: #f8d7da;
-  color: #721c24;
-  padding: 15px;
-  border-radius: 8px;
+  background: rgba(255, 107, 107, 0.1);
+  color: #FF6B6B;
+  padding: 20px;
+  border-radius: 12px;
   margin-bottom: 20px;
-  border: 1px solid #f5c6cb;
+  border: 1px solid rgba(255, 107, 107, 0.3);
+  backdrop-filter: blur(10px);
 `;
 
 const LoadingSpinner = styled.div`
   display: inline-block;
   width: 20px;
   height: 20px;
-  border: 3px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid rgba(0, 255, 136, 0.3);
   border-radius: 50%;
-  border-top-color: white;
+  border-top-color: #00FF88;
   animation: spin 1s ease-in-out infinite;
   margin-right: 8px;
 
@@ -138,18 +197,23 @@ const LoadingText = styled.span`
 `;
 
 const StatsDisplay = styled.div`
-  background: #e3f2fd;
-  border-radius: 8px;
-  padding: 15px;
-  margin-bottom: 20px;
+  background: rgba(0, 200, 255, 0.05);
+  border: 1px solid rgba(0, 200, 255, 0.2);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 30px;
   text-align: center;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 20px rgba(0, 200, 255, 0.1);
 `;
 
 const StatItem = styled.div`
   display: inline-block;
-  margin: 0 15px;
+  margin: 0 20px;
   font-size: 14px;
-  color: #1976d2;
+  color: #00C8FF;
+  font-weight: 500;
+  letter-spacing: 0.5px;
 `;
 
 function SmartFaceDetector() {
@@ -391,20 +455,42 @@ function SmartFaceDetector() {
         const scaledWidth = width * scaleX;
         const scaledHeight = height * scaleY;
         
-        // Draw face box (green)
-        ctx.strokeStyle = '#00ff00';
+        // Draw futuristic face box with glow effect
+        ctx.strokeStyle = '#00FF88';
         ctx.lineWidth = 3;
+        ctx.shadowColor = '#00FF88';
+        ctx.shadowBlur = 15;
         ctx.strokeRect(scaledX, scaledY, scaledWidth, scaledHeight);
         
-        // Draw label background
-        const labelText = `${face.label} (${(face.confidence * 100).toFixed(0)}%)`;
-        ctx.fillStyle = 'rgba(0, 255, 0, 0.9)';
-        ctx.fillRect(scaledX, scaledY - 35, Math.max(scaledWidth, labelText.length * 12), 30);
+        // Draw inner glow
+        ctx.strokeStyle = 'rgba(0, 255, 136, 0.6)';
+        ctx.lineWidth = 1;
+        ctx.shadowBlur = 8;
+        ctx.strokeRect(scaledX + 2, scaledY + 2, scaledWidth - 4, scaledHeight - 4);
         
-        // Draw label text
-        ctx.fillStyle = '#000';
-        ctx.font = 'bold 16px Arial';
-        ctx.fillText(labelText, scaledX + 5, scaledY - 10);
+        // Reset shadow
+        ctx.shadowBlur = 0;
+        
+        // Draw label background with glass effect
+        const labelText = `${face.label} (${(face.confidence * 100).toFixed(0)}%)`;
+        const labelWidth = Math.max(scaledWidth, labelText.length * 12);
+        
+        // Glass background
+        ctx.fillStyle = 'rgba(0, 255, 136, 0.15)';
+        ctx.fillRect(scaledX, scaledY - 40, labelWidth, 35);
+        
+        // Border
+        ctx.strokeStyle = 'rgba(0, 255, 136, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(scaledX, scaledY - 40, labelWidth, 35);
+        
+        // Draw label text with glow
+        ctx.fillStyle = '#00FF88';
+        ctx.font = 'bold 16px Inter, -apple-system, sans-serif';
+        ctx.shadowColor = '#00FF88';
+        ctx.shadowBlur = 10;
+        ctx.fillText(labelText, scaledX + 8, scaledY - 15);
+        ctx.shadowBlur = 0;
       }
     });
     

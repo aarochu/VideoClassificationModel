@@ -3,63 +3,92 @@ import { useDropzone } from 'react-dropzone';
 import styled from 'styled-components';
 
 const UploadContainer = styled.div`
-  border: 2px dashed ${props => props.$isDragActive ? '#667eea' : '#ddd'};
-  border-radius: 12px;
-  padding: 40px;
+  border: 2px dashed ${props => props.$isDragActive ? '#00FF88' : 'rgba(0, 255, 136, 0.3)'};
+  border-radius: 20px;
+  padding: 50px;
   text-align: center;
-  background: ${props => props.$isDragActive ? '#f8f9ff' : '#fafafa'};
+  background: ${props => props.$isDragActive 
+    ? 'rgba(0, 255, 136, 0.1)' 
+    : 'rgba(0, 255, 136, 0.05)'};
   transition: all 0.3s ease;
   cursor: pointer;
+  backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
 
   &:hover {
-    border-color: #667eea;
-    background: #f8f9ff;
+    border-color: #00FF88;
+    background: rgba(0, 255, 136, 0.1);
+    box-shadow: 0 0 30px rgba(0, 255, 136, 0.2);
+    transform: translateY(-2px);
   }
+
+  ${props => props.$isDragActive && `
+    box-shadow: 0 0 40px rgba(0, 255, 136, 0.3);
+    border-color: #00FF88;
+    background: rgba(0, 255, 136, 0.15);
+  `}
 `;
 
 const UploadIcon = styled.div`
-  font-size: 48px;
-  margin-bottom: 20px;
-  color: #667eea;
+  font-size: 64px;
+  margin-bottom: 24px;
+  color: #00FF88;
+  text-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+  animation: float 3s ease-in-out infinite;
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
 `;
 
 const UploadText = styled.div`
-  font-size: 18px;
-  color: #333;
-  margin-bottom: 10px;
+  font-size: 20px;
+  color: #EAEAEA;
+  margin-bottom: 12px;
   font-weight: 500;
+  letter-spacing: 0.5px;
 `;
 
 const UploadSubtext = styled.div`
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 20px;
+  font-size: 16px;
+  color: rgba(234, 234, 234, 0.7);
+  margin-bottom: 24px;
+  font-weight: 300;
 `;
 
 const FileInfo = styled.div`
-  background: #e8f2ff;
-  border: 1px solid #b3d9ff;
-  border-radius: 8px;
-  padding: 15px;
-  margin-top: 20px;
+  background: rgba(0, 200, 255, 0.1);
+  border: 1px solid rgba(0, 200, 255, 0.3);
+  border-radius: 16px;
+  padding: 20px;
+  margin-top: 24px;
   text-align: left;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 20px rgba(0, 200, 255, 0.1);
 `;
 
 const FileName = styled.div`
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 5px;
+  font-weight: 500;
+  color: #00C8FF;
+  margin-bottom: 8px;
+  font-size: 16px;
+  letter-spacing: 0.5px;
 `;
 
 const FileSize = styled.div`
-  font-size: 12px;
-  color: #666;
+  font-size: 14px;
+  color: rgba(234, 234, 234, 0.6);
+  font-weight: 300;
 `;
 
 const SupportedFormats = styled.div`
-  font-size: 12px;
-  color: #888;
-  margin-top: 10px;
+  font-size: 14px;
+  color: rgba(234, 234, 234, 0.5);
+  margin-top: 16px;
+  font-weight: 300;
+  letter-spacing: 0.3px;
 `;
 
 function VideoUploader({ onFileSelect, selectedFile }) {
