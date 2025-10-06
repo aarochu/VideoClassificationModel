@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import styled from 'styled-components';
-import { detectFacesInImage, getFaceDetectorStatus } from '../services/api';
+import { detectFacesInImage, getFaceDetectorStatus, resetFaceTracker } from '../services/api';
 
 const SmartFaceContainer = styled.div`
   background: transparent;
@@ -331,6 +331,17 @@ function SmartFaceDetector() {
     }
   }, []);
 
+  const handleResetTracker = useCallback(async () => {
+    try {
+      await resetFaceTracker();
+      setFaces([]);
+      console.log('🔄 Face tracker reset - next detection will be Person 1');
+    } catch (error) {
+      console.error('Failed to reset face tracker:', error);
+      setError('Failed to reset face tracker');
+    }
+  }, []);
+
   const captureFrame = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return null;
     
@@ -604,6 +615,13 @@ function SmartFaceDetector() {
               style={{ background: '#6c757d', color: 'white' }}
             >
               📷 Stop Camera
+            </Button>
+
+            <Button
+              onClick={handleResetTracker}
+              style={{ background: 'rgba(255, 193, 7, 0.2)', borderColor: 'rgba(255, 193, 7, 0.6)', color: '#FFC107' }}
+            >
+              🔄 Reset Tracker
             </Button>
           </Controls>
 

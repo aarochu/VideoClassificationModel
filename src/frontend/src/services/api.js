@@ -147,3 +147,13 @@ export const getFaceDetectorStatus = async () => {
     return { available: false, type: null, capabilities: {} };
   }
 };
+
+export const resetFaceTracker = async () => {
+  try {
+    const response = await api.post('/reset_face_tracker');
+    return response.data;
+  } catch (error) {
+    console.error('Error resetting face tracker:', error);
+    throw error;
+  }
+};
