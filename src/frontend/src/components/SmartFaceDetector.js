@@ -445,7 +445,12 @@ function SmartFaceDetector() {
       
       // Stop current detection if active
       if (isActive) {
-        stopDetection();
+        setIsActive(false);
+        if (detectionIntervalRef.current) {
+          clearInterval(detectionIntervalRef.current);
+          detectionIntervalRef.current = null;
+        }
+        setFaces([]);
       }
       
       const result = await switchDetector(method);
@@ -467,7 +472,7 @@ function SmartFaceDetector() {
     } finally {
       setIsLoading(false);
     }
-  }, [isActive, stopDetection]);
+  }, [isActive]);
 
   const captureFrame = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return null;

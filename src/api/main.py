@@ -21,7 +21,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from model.video_classifier import VideoClassifier, VideoClassifierConfig
 from data.dataset import VideoDataset
-from model.face_detector import create_face_detector, FaceDetector, OpenCVFaceDetector
+from model.face_detector import create_face_detector, FaceDetector, OpenCVFaceDetector, DLIB_AVAILABLE, YOLO_AVAILABLE, MEDIAPIPE_AVAILABLE
 
 
 class VideoClassifierAPI:
@@ -746,57 +746,71 @@ async def switch_detector(request: dict):
 @app.get("/available_detectors")
 async def get_available_detectors():
     """Get list of available face detection methods."""
-    available = []
-    
-    # Ensemble detector (always available if any detector is available)
-    if face_detector is not None:
+    try:
+        available = []
+        
+        # Ensemble detector (always available if any detector is available)
+        if face_detector is not None:
+            models_used = []
+            if hasattr(face_detector, 'detectors') and face_detector.detectors:
+                models_used = list(face_detector.detectors.keys())
+            
+            available.append({
+                "method": "ensemble",
+                "name": "Ensemble (Cross-Validation)",
+                "description": "Combines all available models for maximum accuracy",
+                "recommended": True,
+                "models_used": models_used
+            })
+        
+        if DLIB_AVAILABLE:
+            available.append({
+                "method": "dlib",
+                "name": "Dlib HOG",
+                "description": "Most accurate single model, slower than others",
+                "recommended": False
+            })
+        
+        if YOLO_AVAILABLE:
+            available.append({
+                "method": "yolo",
+                "name": "YOLOv8",
+                "description": "Very fast and accurate, good for real-time",
+                "recommended": False
+            })
+        
+        if MEDIAPIPE_AVAILABLE:
+            available.append({
+                "method": "mediapipe",
+                "name": "MediaPipe",
+                "description": "Fast and accurate, good balance",
+                "recommended": False
+            })
+        
         available.append({
-            "method": "ensemble",
-            "name": "Ensemble (Cross-Validation)",
-            "description": "Combines all available models for maximum accuracy",
-            "recommended": True,
-            "models_used": list(face_detector.detectors.keys()) if hasattr(face_detector, 'detectors') else []
-        })
-    
-    if DLIB_AVAILABLE:
-        available.append({
-            "method": "dlib",
-            "name": "Dlib HOG",
-            "description": "Most accurate single model, slower than others",
+            "method": "opencv",
+            "name": "OpenCV Haar",
+            "description": "Fastest, basic accuracy",
             "recommended": False
         })
-    
-    if YOLO_AVAILABLE:
-        available.append({
-            "method": "yolo",
-            "name": "YOLOv8",
-            "description": "Very fast and accurate, good for real-time",
-            "recommended": False
+        
+        ensemble_info = None
+        if face_detector and hasattr(face_detector, 'detectors'):
+            ensemble_info = {
+                "min_consensus": getattr(face_detector, 'min_consensus', None),
+                "active_models": list(face_detector.detectors.keys()) if face_detector.detectors else []
+            }
+        
+        return JSONResponse(content={
+            "available_detectors": available,
+            "current_detector": type(face_detector).__name__ if face_detector else None,
+            "ensemble_info": ensemble_info
         })
-    
-    if MEDIAPIPE_AVAILABLE:
-        available.append({
-            "method": "mediapipe",
-            "name": "MediaPipe",
-            "description": "Fast and accurate, good balance",
-            "recommended": False
-        })
-    
-    available.append({
-        "method": "opencv",
-        "name": "OpenCV Haar",
-        "description": "Fastest, basic accuracy",
-        "recommended": False
-    })
-    
-    return JSONResponse(content={
-        "available_detectors": available,
-        "current_detector": type(face_detector).__name__ if face_detector else None,
-        "ensemble_info": {
-            "min_consensus": face_detector.min_consensus if hasattr(face_detector, 'min_consensus') else None,
-            "active_models": list(face_detector.detectors.keys()) if hasattr(face_detector, 'detectors') else []
-        } if face_detector else None
-    })
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to get available detectors: {str(e)}"}
+        )
 
 
 if __name__ == "__main__":
