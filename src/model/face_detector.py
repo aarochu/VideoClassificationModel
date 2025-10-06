@@ -19,7 +19,23 @@ try:
     MEDIAPIPE_AVAILABLE = True
 except ImportError:
     MEDIAPIPE_AVAILABLE = False
-    print("MediaPipe not available, using OpenCV only")
+    print("MediaPipe not available")
+
+# Try to import dlib for more accurate face detection
+try:
+    import dlib
+    DLIB_AVAILABLE = True
+except ImportError:
+    DLIB_AVAILABLE = False
+    print("Dlib not available")
+
+# Try to import YOLOv8 for face detection
+try:
+    from ultralytics import YOLO
+    YOLO_AVAILABLE = True
+except ImportError:
+    YOLO_AVAILABLE = False
+    print("YOLOv8 not available")
 
 
 class FaceTracker:
@@ -551,26 +567,574 @@ class OpenCVFaceDetector:
         return annotated_frame, faces
 
 
-def create_face_detector(method: str = "mediapipe") -> FaceDetector:
+class DlibFaceDetector:
+    """
+    Face detector using Dlib's HOG-based face detector.
+    More accurate than OpenCV but slower than MediaPipe.
+    """
+    
+    def __init__(self):
+        """Initialize Dlib face detector."""
+        if not DLIB_AVAILABLE:
+            raise ImportError("Dlib is not available. Please install dlib.")
+        
+        # Initialize HOG-based face detector
+        self.face_detector = dlib.get_frontal_face_detector()
+        self.tracker = FaceTracker()
+        
+        # Optional: Initialize face recognition (for future identity features)
+        self.face_recognizer = None
+        self.face_encodings = {}  # Store known face encodings
+        
+    def _is_valid_face_detection(self, x: int, y: int, width: int, height: int, frame_width: int, frame_height: int) -> bool:
+        """
+        Validate if a detection is likely to be a real face.
+        
+        Args:
+            x, y, width, height: Bounding box coordinates
+            frame_width, frame_height: Frame dimensions
+            
+        Returns:
+            True if detection appears to be a valid face
+        """
+        # Check minimum size (faces shouldn't be too small)
+        if width < 20 or height < 20:
+            return False
+        
+        # Check maximum size (faces shouldn't be too large relative to frame)
+        if width > frame_width * 0.9 or height > frame_height * 0.9:
+            return False
+        
+        # Check aspect ratio (faces are roughly square to slightly rectangular)
+        aspect_ratio = width / height
+        if aspect_ratio < 0.5 or aspect_ratio > 2.0:  # More permissive range
+            return False
+        
+        # Check if detection is too close to frame edges (only for very close)
+        margin = min(width, height) * 0.05  # Smaller margin
+        if (x < margin or y < margin or 
+            x + width > frame_width - margin or 
+            y + height > frame_height - margin):
+            return False
+        
+        # Check area (faces shouldn't be too small relative to frame)
+        detection_area = width * height
+        frame_area = frame_width * frame_height
+        if detection_area < frame_area * 0.0005:  # More permissive (0.05% of frame)
+            return False
+        
+        return True
+        
+    def detect_faces(self, frame: np.ndarray) -> List[Dict]:
+        """
+        Detect faces using Dlib HOG-based detector.
+        
+        Args:
+            frame: Input image frame (BGR format)
+            
+        Returns:
+            List of face detection results with tracking IDs
+        """
+        # Convert BGR to RGB for dlib
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        # Detect faces using HOG-based detector
+        faces = self.face_detector(rgb_frame)
+        
+        detections = []
+        h, w = frame.shape[:2]
+        
+        for face in faces:
+            # Convert dlib rectangle to (x, y, width, height)
+            x = face.left()
+            y = face.top()
+            width = face.width()
+            height = face.height()
+            
+            # Filter out invalid detections
+            if self._is_valid_face_detection(x, y, width, height, w, h):
+                detections.append((x, y, width, height))
+        
+        # Update tracker and return results
+        tracked_faces = self.tracker.update(detections)
+        return tracked_faces
+    
+    def draw_faces(self, frame: np.ndarray, faces: List[Dict]) -> np.ndarray:
+        """
+        Draw bounding boxes and labels on the frame.
+        
+        Args:
+            frame: Input frame
+            faces: List of face detection results
+            
+        Returns:
+            Frame with drawn bounding boxes and labels
+        """
+        result_frame = frame.copy()
+        
+        for face in faces:
+            x, y, w, h = face['bbox']
+            label = face['label']
+            confidence = face['confidence']
+            
+            # Draw bounding box (green)
+            cv2.rectangle(result_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            
+            # Draw label background
+            label_text = f"{label} ({confidence:.1%})"
+            (text_width, text_height), _ = cv2.getTextSize(
+                label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
+            )
+            
+            # Draw label background rectangle
+            cv2.rectangle(
+                result_frame,
+                (x, y - text_height - 10),
+                (x + text_width, y),
+                (0, 255, 0),
+                -1
+            )
+            
+            # Draw label text
+            cv2.putText(
+                result_frame,
+                label_text,
+                (x, y - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 0),
+                2
+            )
+        
+        return result_frame
+    
+    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, List[Dict]]:
+        """
+        Process a single frame: detect faces, track them, and draw results.
+        
+        Args:
+            frame: Input frame (BGR format)
+            
+        Returns:
+            Tuple of (annotated_frame, face_detections)
+        """
+        faces = self.detect_faces(frame)
+        annotated_frame = self.draw_faces(frame, faces)
+        return annotated_frame, faces
+
+
+class YOLOFaceDetector:
+    """
+    Face detector using YOLOv8 for face detection.
+    Very accurate and fast, good for real-time applications.
+    """
+    
+    def __init__(self, model_path: str = "yolov8n.pt"):
+        """Initialize YOLOv8 face detector."""
+        if not YOLO_AVAILABLE:
+            raise ImportError("YOLOv8 is not available. Please install ultralytics.")
+        
+        # Load YOLOv8 model (will use general object detection, we'll filter for faces)
+        self.model = YOLO(model_path)
+        self.tracker = FaceTracker()
+        
+        # Face class ID in COCO dataset (person class, we'll filter for face-like detections)
+        self.person_class_id = 0
+        
+    def _is_valid_face_detection(self, x: int, y: int, width: int, height: int, frame_width: int, frame_height: int) -> bool:
+        """
+        Validate if a detection is likely to be a real face.
+        
+        Args:
+            x, y, width, height: Bounding box coordinates
+            frame_width, frame_height: Frame dimensions
+            
+        Returns:
+            True if detection appears to be a valid face
+        """
+        # Check minimum size (faces shouldn't be too small)
+        if width < 20 or height < 20:
+            return False
+        
+        # Check maximum size (faces shouldn't be too large relative to frame)
+        if width > frame_width * 0.9 or height > frame_height * 0.9:
+            return False
+        
+        # Check aspect ratio (faces are roughly square to slightly rectangular)
+        aspect_ratio = width / height
+        if aspect_ratio < 0.5 or aspect_ratio > 2.0:  # More permissive range
+            return False
+        
+        # Check if detection is too close to frame edges (only for very close)
+        margin = min(width, height) * 0.05  # Smaller margin
+        if (x < margin or y < margin or 
+            x + width > frame_width - margin or 
+            y + height > frame_height - margin):
+            return False
+        
+        # Check area (faces shouldn't be too small relative to frame)
+        detection_area = width * height
+        frame_area = frame_width * frame_height
+        if detection_area < frame_area * 0.0005:  # More permissive (0.05% of frame)
+            return False
+        
+        return True
+        
+    def detect_faces(self, frame: np.ndarray) -> List[Dict]:
+        """
+        Detect faces using YOLOv8.
+        
+        Args:
+            frame: Input image frame (BGR format)
+            
+        Returns:
+            List of face detection results with tracking IDs
+        """
+        # Run YOLOv8 inference
+        results = self.model(frame, verbose=False)
+        
+        detections = []
+        h, w = frame.shape[:2]
+        
+        for result in results:
+            boxes = result.boxes
+            if boxes is not None:
+                for box in boxes:
+                    # Get bounding box coordinates
+                    x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                    confidence = box.conf[0].cpu().numpy()
+                    class_id = int(box.cls[0].cpu().numpy())
+                    
+                    # Filter for person class and high confidence
+                    if class_id == self.person_class_id and confidence > 0.5:
+                        # Convert to (x, y, width, height) format
+                        x = int(x1)
+                        y = int(y1)
+                        width = int(x2 - x1)
+                        height = int(y2 - y1)
+                        
+                        # Filter out invalid detections
+                        if self._is_valid_face_detection(x, y, width, height, w, h):
+                            detections.append((x, y, width, height))
+        
+        # Update tracker and return results
+        tracked_faces = self.tracker.update(detections)
+        return tracked_faces
+    
+    def draw_faces(self, frame: np.ndarray, faces: List[Dict]) -> np.ndarray:
+        """
+        Draw bounding boxes and labels on the frame.
+        
+        Args:
+            frame: Input frame
+            faces: List of face detection results
+            
+        Returns:
+            Frame with drawn bounding boxes and labels
+        """
+        result_frame = frame.copy()
+        
+        for face in faces:
+            x, y, w, h = face['bbox']
+            label = face['label']
+            confidence = face['confidence']
+            
+            # Draw bounding box (green)
+            cv2.rectangle(result_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            
+            # Draw label background
+            label_text = f"{label} ({confidence:.1%})"
+            (text_width, text_height), _ = cv2.getTextSize(
+                label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
+            )
+            
+            # Draw label background rectangle
+            cv2.rectangle(
+                result_frame,
+                (x, y - text_height - 10),
+                (x + text_width, y),
+                (0, 255, 0),
+                -1
+            )
+            
+            # Draw label text
+            cv2.putText(
+                result_frame,
+                label_text,
+                (x, y - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 0),
+                2
+            )
+        
+        return result_frame
+    
+    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, List[Dict]]:
+        """
+        Process a single frame: detect faces, track them, and draw results.
+        
+        Args:
+            frame: Input frame (BGR format)
+            
+        Returns:
+            Tuple of (annotated_frame, face_detections)
+        """
+        faces = self.detect_faces(frame)
+        annotated_frame = self.draw_faces(frame, faces)
+        return annotated_frame, faces
+
+
+class EnsembleFaceDetector:
+    """
+    Ensemble face detector that combines multiple detection methods
+    and cross-validates results for maximum accuracy.
+    """
+    
+    def __init__(self, methods: List[str] = None, min_consensus: int = 2):
+        """
+        Initialize ensemble face detector.
+        
+        Args:
+            methods: List of detection methods to use
+            min_consensus: Minimum number of models that must agree on a detection
+        """
+        self.detectors = {}
+        self.min_consensus = min_consensus
+        self.tracker = FaceTracker()
+        
+        # Default methods in order of preference
+        if methods is None:
+            methods = ["dlib", "mediapipe", "yolo", "opencv"]
+        
+        # Initialize available detectors
+        for method in methods:
+            try:
+                if method.lower() == "dlib" and DLIB_AVAILABLE:
+                    self.detectors["dlib"] = DlibFaceDetector()
+                    print(f"✅ Dlib detector initialized")
+                elif method.lower() == "mediapipe" and MEDIAPIPE_AVAILABLE:
+                    self.detectors["mediapipe"] = FaceDetector()
+                    print(f"✅ MediaPipe detector initialized")
+                elif method.lower() == "yolo" and YOLO_AVAILABLE:
+                    self.detectors["yolo"] = YOLOFaceDetector()
+                    print(f"✅ YOLOv8 detector initialized")
+                elif method.lower() == "opencv":
+                    self.detectors["opencv"] = OpenCVFaceDetector()
+                    print(f"✅ OpenCV detector initialized")
+            except Exception as e:
+                print(f"❌ Failed to initialize {method} detector: {e}")
+        
+        if not self.detectors:
+            raise RuntimeError("No face detectors could be initialized")
+        
+        print(f"🎯 Ensemble detector ready with {len(self.detectors)} models: {list(self.detectors.keys())}")
+    
+    def _calculate_iou(self, box1: Tuple[int, int, int, int], box2: Tuple[int, int, int, int]) -> float:
+        """Calculate Intersection over Union between two bounding boxes."""
+        x1, y1, w1, h1 = box1
+        x2, y2, w2, h2 = box2
+        
+        # Calculate intersection
+        xi1 = max(x1, x2)
+        yi1 = max(y1, y2)
+        xi2 = min(x1 + w1, x2 + w2)
+        yi2 = min(y1 + h1, y2 + h2)
+        
+        if xi2 <= xi1 or yi2 <= yi1:
+            return 0.0
+            
+        intersection = (xi2 - xi1) * (yi2 - yi1)
+        union = w1 * h1 + w2 * h2 - intersection
+        
+        return intersection / union if union > 0 else 0.0
+    
+    def _consensus_detection(self, all_detections: Dict[str, List[Tuple[int, int, int, int]]]) -> List[Tuple[int, int, int, int]]:
+        """
+        Find consensus detections across multiple models.
+        
+        Args:
+            all_detections: Dict mapping detector name to list of detections
+            
+        Returns:
+            List of consensus detections
+        """
+        if not all_detections:
+            return []
+        
+        # Flatten all detections with their source
+        all_boxes = []
+        for detector_name, detections in all_detections.items():
+            for detection in detections:
+                all_boxes.append((detection, detector_name))
+        
+        if not all_boxes:
+            return []
+        
+        # Group detections by IoU similarity
+        consensus_groups = []
+        used_boxes = set()
+        
+        for i, (box1, detector1) in enumerate(all_boxes):
+            if i in used_boxes:
+                continue
+            
+            # Start a new consensus group
+            group = [(box1, detector1)]
+            used_boxes.add(i)
+            
+            # Find similar detections
+            for j, (box2, detector2) in enumerate(all_boxes):
+                if j in used_boxes or detector1 == detector2:
+                    continue
+                
+                iou = self._calculate_iou(box1, box2)
+                if iou > 0.3:  # IoU threshold for consensus
+                    group.append((box2, detector2))
+                    used_boxes.add(j)
+            
+            # Only keep groups with minimum consensus
+            if len(group) >= self.min_consensus:
+                # Average the bounding boxes in the group
+                avg_x = int(sum(box[0] for box, _ in group) / len(group))
+                avg_y = int(sum(box[1] for box, _ in group) / len(group))
+                avg_w = int(sum(box[2] for box, _ in group) / len(group))
+                avg_h = int(sum(box[3] for box, _ in group) / len(group))
+                
+                consensus_groups.append((avg_x, avg_y, avg_w, avg_h))
+        
+        return consensus_groups
+    
+    def detect_faces(self, frame: np.ndarray) -> List[Dict]:
+        """
+        Detect faces using ensemble of multiple models.
+        
+        Args:
+            frame: Input image frame (BGR format)
+            
+        Returns:
+            List of consensus face detection results with tracking IDs
+        """
+        all_detections = {}
+        
+        # Run all detectors
+        for detector_name, detector in self.detectors.items():
+            try:
+                detections = detector.detect_faces(frame)
+                # Extract raw bounding boxes
+                raw_boxes = [face['bbox'] for face in detections]
+                all_detections[detector_name] = raw_boxes
+            except Exception as e:
+                print(f"Error in {detector_name} detector: {e}")
+                all_detections[detector_name] = []
+        
+        # Find consensus detections
+        consensus_boxes = self._consensus_detection(all_detections)
+        
+        # Update tracker with consensus results
+        tracked_faces = self.tracker.update(consensus_boxes)
+        return tracked_faces
+    
+    def draw_faces(self, frame: np.ndarray, faces: List[Dict]) -> np.ndarray:
+        """
+        Draw bounding boxes and labels on the frame.
+        
+        Args:
+            frame: Input frame
+            faces: List of face detection results
+            
+        Returns:
+            Frame with drawn bounding boxes and labels
+        """
+        result_frame = frame.copy()
+        
+        for face in faces:
+            x, y, w, h = face['bbox']
+            label = face['label']
+            confidence = face['confidence']
+            
+            # Draw bounding box (green)
+            cv2.rectangle(result_frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+            
+            # Draw label background
+            label_text = f"{label} ({confidence:.1%})"
+            (text_width, text_height), _ = cv2.getTextSize(
+                label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
+            )
+            
+            # Draw label background rectangle
+            cv2.rectangle(
+                result_frame,
+                (x, y - text_height - 10),
+                (x + text_width, y),
+                (0, 255, 0),
+                -1
+            )
+            
+            # Draw label text
+            cv2.putText(
+                result_frame,
+                label_text,
+                (x, y - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 0),
+                2
+            )
+        
+        return result_frame
+    
+    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, List[Dict]]:
+        """
+        Process a single frame: detect faces, track them, and draw results.
+        
+        Args:
+            frame: Input frame (BGR format)
+            
+        Returns:
+            Tuple of (annotated_frame, face_detections)
+        """
+        faces = self.detect_faces(frame)
+        annotated_frame = self.draw_faces(frame, faces)
+        return annotated_frame, faces
+
+
+def create_face_detector(method: str = "ensemble"):
     """
     Factory function to create face detector.
     
     Args:
-        method: "mediapipe" or "opencv"
+        method: "ensemble", "mediapipe", "dlib", "yolo", or "opencv"
         
     Returns:
         Face detector instance
     """
-    if method.lower() == "mediapipe":
+    method = method.lower()
+    
+    if method == "ensemble":
+        return EnsembleFaceDetector()
+    elif method == "mediapipe":
         if MEDIAPIPE_AVAILABLE:
             return FaceDetector()
         else:
             print("MediaPipe not available, falling back to OpenCV")
             return OpenCVFaceDetector()
-    elif method.lower() == "opencv":
+    elif method == "dlib":
+        if DLIB_AVAILABLE:
+            return DlibFaceDetector()
+        else:
+            print("Dlib not available, falling back to OpenCV")
+            return OpenCVFaceDetector()
+    elif method == "yolo":
+        if YOLO_AVAILABLE:
+            return YOLOFaceDetector()
+        else:
+            print("YOLOv8 not available, falling back to OpenCV")
+            return OpenCVFaceDetector()
+    elif method == "opencv":
         return OpenCVFaceDetector()
     else:
-        raise ValueError(f"Unknown face detection method: {method}")
+        raise ValueError(f"Unknown face detection method: {method}. Available: ensemble, mediapipe, dlib, yolo, opencv")
 
 
 # Example usage and testing

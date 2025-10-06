@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import styled from 'styled-components';
-import { detectFacesInImage, getFaceDetectorStatus, resetFaceTracker } from '../services/api';
+import { detectFacesInImage, getFaceDetectorStatus, resetFaceTracker, switchDetector, getAvailableDetectors } from '../services/api';
 
 const SmartFaceContainer = styled.div`
   background: transparent;
@@ -216,6 +216,93 @@ const StatItem = styled.div`
   letter-spacing: 0.5px;
 `;
 
+const DetectorSelector = styled.div`
+  background: rgba(0, 200, 255, 0.05);
+  border: 1px solid rgba(0, 200, 255, 0.2);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 30px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 0 20px rgba(0, 200, 255, 0.1);
+`;
+
+const SelectorTitle = styled.h4`
+  color: #00C8FF;
+  margin: 0 0 15px 0;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+`;
+
+const DetectorGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 15px;
+`;
+
+const DetectorCard = styled.div`
+  background: ${props => props.$isActive 
+    ? 'rgba(0, 255, 136, 0.1)' 
+    : 'rgba(255, 255, 255, 0.05)'};
+  border: 2px solid ${props => props.$isActive 
+    ? 'rgba(0, 255, 136, 0.4)' 
+    : 'rgba(255, 255, 255, 0.1)'};
+  border-radius: 12px;
+  padding: 15px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  
+  &:hover {
+    border-color: ${props => props.$isActive 
+      ? 'rgba(0, 255, 136, 0.6)' 
+      : 'rgba(0, 200, 255, 0.4)'};
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px ${props => props.$isActive 
+      ? 'rgba(0, 255, 136, 0.2)' 
+      : 'rgba(0, 200, 255, 0.2)'};
+  }
+`;
+
+const DetectorName = styled.div`
+  font-weight: 600;
+  color: ${props => props.$isActive ? '#00FF88' : '#EAEAEA'};
+  font-size: 14px;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+`;
+
+const DetectorDescription = styled.div`
+  font-size: 12px;
+  color: #B0B0B0;
+  line-height: 1.4;
+`;
+
+const RecommendedBadge = styled.span`
+  background: rgba(0, 255, 136, 0.2);
+  color: #00FF88;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+`;
+
+const EnsembleInfo = styled.div`
+  background: rgba(0, 255, 136, 0.05);
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  border-radius: 8px;
+  padding: 10px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: #00FF88;
+  text-align: center;
+`;
+
 function SmartFaceDetector() {
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState(null);
@@ -223,6 +310,8 @@ function SmartFaceDetector() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [detectorStatus, setDetectorStatus] = useState(null);
+  const [availableDetectors, setAvailableDetectors] = useState([]);
+  const [currentDetector, setCurrentDetector] = useState(null);
   const [stats, setStats] = useState({
     totalFaces: 0,
     uniquePersons: 0,
@@ -235,12 +324,19 @@ function SmartFaceDetector() {
   const detectionIntervalRef = useRef(null);
   const animationRef = useRef(null);
 
-  // Check face detector status on mount
+  // Check face detector status and load available detectors on mount
   useEffect(() => {
     const checkDetectorStatus = async () => {
       try {
-        const status = await getFaceDetectorStatus();
+        const [status, detectors] = await Promise.all([
+          getFaceDetectorStatus(),
+          getAvailableDetectors()
+        ]);
+        
         setDetectorStatus(status);
+        setAvailableDetectors(detectors.available_detectors || []);
+        setCurrentDetector(detectors.current_detector);
+        
         if (!status.available) {
           setError('Face detector is not available. Please check the backend server.');
         }
@@ -341,6 +437,37 @@ function SmartFaceDetector() {
       setError('Failed to reset face tracker');
     }
   }, []);
+
+  const handleDetectorSwitch = useCallback(async (method) => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      // Stop current detection if active
+      if (isActive) {
+        stopDetection();
+      }
+      
+      const result = await switchDetector(method);
+      setCurrentDetector(result.detector_type);
+      
+      // Refresh detector status
+      const [status, detectors] = await Promise.all([
+        getFaceDetectorStatus(),
+        getAvailableDetectors()
+      ]);
+      
+      setDetectorStatus(status);
+      setAvailableDetectors(detectors.available_detectors || []);
+      
+      console.log(`🎯 Switched to ${method} detector:`, result);
+    } catch (error) {
+      console.error('Failed to switch detector:', error);
+      setError(`Failed to switch to ${method} detector: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isActive, stopDetection]);
 
   const captureFrame = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return null;
@@ -541,9 +668,37 @@ function SmartFaceDetector() {
     <SmartFaceContainer>
       <h3>🚀 SmartFace - Real-time Face Detection & Tracking</h3>
       
+      {availableDetectors.length > 0 && (
+        <DetectorSelector>
+          <SelectorTitle>🎯 Face Detection Engine</SelectorTitle>
+          <DetectorGrid>
+            {availableDetectors.map((detector) => (
+              <DetectorCard
+                key={detector.method}
+                $isActive={currentDetector === detector.method || 
+                          (detector.method === 'ensemble' && currentDetector?.includes('Ensemble'))}
+                onClick={() => handleDetectorSwitch(detector.method)}
+              >
+                <DetectorName $isActive={currentDetector === detector.method || 
+                                        (detector.method === 'ensemble' && currentDetector?.includes('Ensemble'))}>
+                  {detector.name}
+                  {detector.recommended && <RecommendedBadge>Recommended</RecommendedBadge>}
+                </DetectorName>
+                <DetectorDescription>{detector.description}</DetectorDescription>
+                {detector.method === 'ensemble' && detector.models_used && (
+                  <EnsembleInfo>
+                    Models: {detector.models_used.join(', ')}
+                  </EnsembleInfo>
+                )}
+              </DetectorCard>
+            ))}
+          </DetectorGrid>
+        </DetectorSelector>
+      )}
+
       {detectorStatus && (
         <StatsDisplay>
-          <StatItem>Detector: {detectorStatus.type || 'Unknown'}</StatItem>
+          <StatItem>Detector: {currentDetector || detectorStatus.type || 'Unknown'}</StatItem>
           <StatItem>Status: {detectorStatus.available ? '✅ Ready' : '❌ Unavailable'}</StatItem>
           <StatItem>Total Detections: {stats.detectionCount}</StatItem>
           <StatItem>Max Faces: {stats.uniquePersons}</StatItem>

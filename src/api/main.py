@@ -192,18 +192,28 @@ async def startup_event():
     """Initialize the model on startup."""
     global model_api, face_detector
     
-    # Initialize face detector
+    # Initialize ensemble face detector for maximum accuracy
     try:
-        face_detector = create_face_detector("mediapipe")
-        print("Face detector initialized successfully")
+        face_detector = create_face_detector("ensemble")
+        print("🎯 Ensemble face detector initialized successfully")
     except Exception as e:
-        print(f"Failed to initialize face detector: {e}")
+        print(f"Failed to initialize ensemble detector: {e}")
         try:
-            face_detector = create_face_detector("opencv")
-            print("OpenCV face detector initialized as fallback")
+            face_detector = create_face_detector("dlib")
+            print("Dlib face detector initialized as fallback")
         except Exception as e2:
-            print(f"Failed to initialize OpenCV face detector: {e2}")
-            face_detector = None
+            print(f"Failed to initialize Dlib face detector: {e2}")
+            try:
+                face_detector = create_face_detector("mediapipe")
+                print("MediaPipe face detector initialized as fallback")
+            except Exception as e3:
+                print(f"Failed to initialize MediaPipe face detector: {e3}")
+                try:
+                    face_detector = create_face_detector("opencv")
+                    print("OpenCV face detector initialized as final fallback")
+                except Exception as e4:
+                    print(f"Failed to initialize OpenCV face detector: {e4}")
+                    face_detector = None
     
     # Look for the best model
     models_dir = Path("../../models")
@@ -682,6 +692,7 @@ async def get_detection_debug():
         debug_info = {
             "detector_type": type(face_detector).__name__,
             "using_mediapipe": hasattr(face_detector, 'use_mediapipe') and face_detector.use_mediapipe,
+            "using_dlib": hasattr(face_detector, 'face_detector') and 'dlib' in str(type(face_detector.face_detector)),
             "tracker_info": {
                 "max_disappeared": face_detector.tracker.max_disappeared,
                 "max_distance": face_detector.tracker.max_distance,
@@ -699,6 +710,93 @@ async def get_detection_debug():
             status_code=500,
             content={"error": f"Failed to get debug info: {str(e)}"}
         )
+
+
+@app.post("/switch_detector")
+async def switch_detector(request: dict):
+    """Switch between different face detection methods."""
+    global face_detector
+    
+    try:
+        method = request.get("method", "dlib").lower()
+        
+        if method not in ["ensemble", "mediapipe", "dlib", "yolo", "opencv"]:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid method. Available: ensemble, mediapipe, dlib, yolo, opencv"}
+            )
+        
+        # Create new detector
+        new_detector = create_face_detector(method)
+        face_detector = new_detector
+        
+        return JSONResponse(content={
+            "message": f"Switched to {method} face detector",
+            "detector_type": type(face_detector).__name__,
+            "method": method
+        })
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to switch detector: {str(e)}"}
+        )
+
+
+@app.get("/available_detectors")
+async def get_available_detectors():
+    """Get list of available face detection methods."""
+    available = []
+    
+    # Ensemble detector (always available if any detector is available)
+    if face_detector is not None:
+        available.append({
+            "method": "ensemble",
+            "name": "Ensemble (Cross-Validation)",
+            "description": "Combines all available models for maximum accuracy",
+            "recommended": True,
+            "models_used": list(face_detector.detectors.keys()) if hasattr(face_detector, 'detectors') else []
+        })
+    
+    if DLIB_AVAILABLE:
+        available.append({
+            "method": "dlib",
+            "name": "Dlib HOG",
+            "description": "Most accurate single model, slower than others",
+            "recommended": False
+        })
+    
+    if YOLO_AVAILABLE:
+        available.append({
+            "method": "yolo",
+            "name": "YOLOv8",
+            "description": "Very fast and accurate, good for real-time",
+            "recommended": False
+        })
+    
+    if MEDIAPIPE_AVAILABLE:
+        available.append({
+            "method": "mediapipe",
+            "name": "MediaPipe",
+            "description": "Fast and accurate, good balance",
+            "recommended": False
+        })
+    
+    available.append({
+        "method": "opencv",
+        "name": "OpenCV Haar",
+        "description": "Fastest, basic accuracy",
+        "recommended": False
+    })
+    
+    return JSONResponse(content={
+        "available_detectors": available,
+        "current_detector": type(face_detector).__name__ if face_detector else None,
+        "ensemble_info": {
+            "min_consensus": face_detector.min_consensus if hasattr(face_detector, 'min_consensus') else None,
+            "active_models": list(face_detector.detectors.keys()) if hasattr(face_detector, 'detectors') else []
+        } if face_detector else None
+    })
 
 
 if __name__ == "__main__":

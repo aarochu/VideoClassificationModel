@@ -157,3 +157,33 @@ export const resetFaceTracker = async () => {
     throw error;
   }
 };
+
+export const switchDetector = async (method) => {
+  try {
+    const response = await api.post('/switch_detector', { method });
+    return response.data;
+  } catch (error) {
+    console.error('Error switching detector:', error);
+    throw error;
+  }
+};
+
+export const getAvailableDetectors = async () => {
+  try {
+    const response = await api.get('/available_detectors');
+    return response.data;
+  } catch (error) {
+    console.error('Error getting available detectors:', error);
+    return { available_detectors: [], current_detector: null };
+  }
+};
+
+export const getDetectionDebug = async () => {
+  try {
+    const response = await api.get('/detection_debug');
+    return response.data;
+  } catch (error) {
+    console.error('Error getting detection debug:', error);
+    return null;
+  }
+};
